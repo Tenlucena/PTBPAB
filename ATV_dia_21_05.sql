@@ -1,48 +1,55 @@
 CREATE PROCEDURE dbo.salaryHistogram
-    @numIntervalos INT
+    @num_intervals INT
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @minSalario DECIMAL(18,2),
-            @maxSalario DECIMAL(18,2),
-            @intervalo DECIMAL(18,2),
-            @i INT = 0;
+    DECLARE @min_salary DECIMAL(10,2),
+            @max_salary DECIMAL(10,2),
+            @interval_size DECIMAL(10,2);
 
     -- Obter salário mínimo e máximo
     SELECT 
-        @minSalario = MIN(Salario),
-        @maxSalario = MAX(Salario)
-    FROM Professores;
+        @min_salary = MIN(salary),
+        @max_salary = MAX(salary)
+    FROM instructor;
 
     -- Calcular o tamanho de cada intervalo
-    SET @intervalo = (@maxSalario - @minSalario) / @numIntervalos;
+    SET @interval_size = (@max_salary - @min_salary) / @num_intervals;
 
     -- Criar tabela temporária para armazenar os resultados
-    CREATE TABLE #Histograma (
-        Intervalo VARCHAR(50),
-        Frequencia INT
+    IF OBJECT_ID('tempdb..#histogram') IS NOT NULL
+        DROP TABLE #histogram;
+
+    CREATE TABLE #histogram (
+        IntervaloMin DECIMAL(10,2),
+        IntervaloMax DECIMAL(10,2),
+        Total INT
     );
 
-    WHILE @i < @numIntervalos
+    -- Preencher a tabela com os intervalos e contagem de professores
+    DECLARE @i INT = 0;
+    WHILE @i < @num_intervals
     BEGIN
-        DECLARE @inicio DECIMAL(18,2) = @minSalario + (@intervalo * @i);
-        DECLARE @fim DECIMAL(18,2) = @minSalario + (@intervalo * (@i + 1));
-        
-        INSERT INTO #Histograma (Intervalo, Frequencia)
-        SELECT 
-            CONCAT(FORMAT(@inicio, 'N2'), ' - ', FORMAT(@fim, 'N2')),
-            COUNT(*)
-        FROM Professores
-        WHERE Salario >= @inicio AND 
-              (Salario < @fim OR (@i = @numIntervalos - 1 AND Salario <= @fim)); -- Incluir limite superior no último intervalo
+        DECLARE @start DECIMAL(10,2) = @min_salary + @interval_size * @i;
+        DECLARE @end DECIMAL(10,2) = @start + @interval_size;
+
+        -- Último intervalo deve incluir o valor máximo
+        IF @i = @num_intervals - 1
+            SET @end = @max_salary + 0.01;
+
+        INSERT INTO #histogram (IntervaloMin, IntervaloMax, Total)
+        SELECT @start, @end - 0.01, COUNT(*)
+        FROM instructor
+        WHERE salary >= @start AND salary < @end;
 
         SET @i = @i + 1;
-    END
+    END;
 
-    -- Exibir o histograma
-    SELECT * FROM #Histograma;
-
-    -- Limpar tabela temporária
-    DROP TABLE #Histograma;
+    -- Exibir os resultados
+    SELECT 
+        FORMAT(IntervaloMin, 'N2') AS valorMinimo,
+        FORMAT(IntervaloMax, 'N2') AS valorMaximo,
+        Total
+    FROM #histogram;
 END;
